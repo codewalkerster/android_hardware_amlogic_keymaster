@@ -35,16 +35,17 @@ LOCAL_C_INCLUDES := \
 	system/security/keystore \
 	external/openssl/include \
 	$(LOCAL_PATH)/include \
-	hardware/amlogic/aml_keymaster \
+	hardware/amlogic/keymaster/secure-os \
 	system/security/softkeymaster/include
-
 
 LOCAL_CFLAGS = -fvisibility=hidden -Wall -Werror
 
 LOCAL_SHARED_LIBRARIES := libcrypto liblog libkeystore_binder libsoftkeymaster
 
 ifeq ($(TARGET_USE_SECUREOS),true)
-LOCAL_SHARED_LIBRARIES += libamlkeymaster_api
+LOCAL_C_INCLUDES += external/opentz/include
+LOCAL_SHARED_LIBRARIES += libotzapi
+LOCAL_STATIC_LIBRARIES := libamlkeymaster_api
 LOCAL_CFLAGS += -DUSE_SECUREOS
 endif
 
@@ -52,3 +53,20 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_SHARED_LIBRARY)
+
+ifeq ($(TARGET_USE_SECUREOS),true)
+include $(CLEAR_VARS)
+LOCAL_MODULE := libamlkeymaster_api
+LOCAL_CFLAGS := -DANDROID_BUILD
+
+LOCAL_C_INCLUDES := \
+	external/opentz/include
+
+LOCAL_SHARED_LIBRARIES := \
+	libotzapi
+
+LOCAL_SHARED_LIBRARIES += libcutils liblog
+LOCAL_SRC_FILES := secure-os/keymaster_secure_api.c
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_STATIC_LIBRARY)
+endif
