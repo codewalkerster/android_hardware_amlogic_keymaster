@@ -69,4 +69,10 @@ LOCAL_SHARED_LIBRARIES += libcutils liblog
 LOCAL_SRC_FILES := secure-os/keymaster_secure_api.c
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_PREBUILT_LIBS := secure-os/keymaster.tzo
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_MULTI_PREBUILT)
+
 endif
