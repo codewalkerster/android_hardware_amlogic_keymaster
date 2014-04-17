@@ -7,6 +7,7 @@
 #include <hardware/keymaster.h>
 #include "otz_id.h"
 #include "otz_tee_client_api.h"
+#include "otz_id_keymaster.h"
 
 #define LENGTH_SHAREMEM  (256)
 
@@ -25,6 +26,19 @@
 TEEC_Context KM_context;
 TEEC_Session KM_session;
 static int KM_inited = 0;
+
+#define KEYMASTER_SERVICE_NAME "keymaster"
+#define KEYMASTER_PROCESS_NAME "process_otz_keymaster_svc"
+#define KEYMASTER_ENTRY_NAME "keymaster_task"
+#define KEYMASTER_FILE_PATH "/system/lib/keymaster.tzo"
+
+TEEC_Service keymaster_service = {
+	.service_id = OTZ_SVC_KEYMASTER,
+	.service_name = KEYMASTER_SERVICE_NAME,
+	.process_name = KEYMASTER_PROCESS_NAME,
+	.entry_name = KEYMASTER_ENTRY_NAME,
+	.file_path = KEYMASTER_FILE_PATH,
+};
 
 
 /*	The API initializes the crypto hardware.
@@ -58,8 +72,8 @@ int KM_Secure_Initialize(void)
             &KM_context,
             &KM_session,
             &svc_id,
-            TEEC_LOGIN_PUBLIC,
-            NULL,
+            TEEC_LOGIN_APPLICATION,
+            &keymaster_service,
             NULL,
             NULL);
 
