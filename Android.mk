@@ -46,6 +46,7 @@ ifeq ($(TARGET_USE_SECUREOS),true)
 #LOCAL_C_INCLUDES += vendor/amlogic/bdk/include
 LOCAL_SHARED_LIBRARIES += libotzapi
 LOCAL_STATIC_LIBRARIES := libamlkeymaster_api
+LOCAL_REQUIRED_MODULES := keymaster
 LOCAL_CFLAGS += -DUSE_SECUREOS
 endif
 
@@ -75,11 +76,12 @@ LOCAL_PREBUILT_LIBS := secure-os/libamlkeymaster_api.a
 include $(BUILD_MULTI_PREBUILT)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := keymaster.tzo
+LOCAL_MODULE := keymaster
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_MODULE_SUFFIX := .tzo
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)
-LOCAL_SRC_FILES := secure-os/$(LOCAL_MODULE)
+LOCAL_SRC_FILES := secure-os/$(LOCAL_MODULE)$(LOCAL_MODULE_SUFFIX)
 include $(BUILD_PREBUILT)
 
 endif
