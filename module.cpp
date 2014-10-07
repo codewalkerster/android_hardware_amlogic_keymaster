@@ -38,8 +38,8 @@ typedef UniquePtr<keymaster_device_t> Unique_keymaster_device_t;
 
 /* Close an keymaster instance */
 static int aml_km_close(hw_device_t *dev) {
+    aml_terminate();
     delete dev;
-	
     return 0;
 }
 

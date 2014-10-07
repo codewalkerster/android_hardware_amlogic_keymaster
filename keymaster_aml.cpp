@@ -280,4 +280,11 @@ int aml_verify_data(const keymaster_device_t* dev,
 	return retVal;
 }
 
-
+__attribute__ ((visibility ("default")))
+int aml_terminate() {
+#ifdef USE_SECUREOS
+    return KM_Secure_Terminate();
+#else
+    return 0;
+#endif
+}

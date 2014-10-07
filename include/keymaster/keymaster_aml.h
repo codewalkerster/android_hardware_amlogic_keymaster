@@ -19,6 +19,8 @@
 #ifndef KEYMASTER_AML_H
 #define KEYMASTER_AML_H
 
+int aml_terminate();
+
 int aml_generate_keypair(const keymaster_device_t* dev,
         const keymaster_keypair_t key_type, const void* key_params,
         uint8_t** keyBlob, size_t* keyBlobLength);
