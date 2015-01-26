@@ -24,7 +24,7 @@ extern "C" {
                              const size_t key_length,
 							 uint8_t** key_blob, size_t* key_blob_length);
 
-    int KM_secure_get_key_type(const uint8_t* key_blob);
+    int KM_secure_get_key_type(const uint8_t* key_blob, const size_t key_blob_length);
 
     int KM_secure_sign_data( const struct keymaster_device* dev,
 		                 const keymaster_keypair_t key_type,

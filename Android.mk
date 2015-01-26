@@ -19,10 +19,14 @@ LOCAL_MODULE := keystore.amlogic
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_SRC_FILES := module.cpp
 LOCAL_C_INCLUDES := \
+	libnativehelper/include/nativehelper/\
 	system/security/keystore \
 	external/openssl/include 
 
 LOCAL_CFLAGS = -fvisibility=hidden -Wall -Werror
+ifeq ($(TARGET_USE_SECUREOS),true)
+LOCAL_CFLAGS += -DUSE_SECUREOS
+endif
 LOCAL_SHARED_LIBRARIES := libcrypto liblog libkeystore_binder libamlkeymaster 
 LOCAL_MODULE_TAGS := optional
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
@@ -32,6 +36,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libamlkeymaster
 LOCAL_SRC_FILES := keymaster_aml.cpp
 LOCAL_C_INCLUDES := \
+	libnativehelper/include/nativehelper/\
 	system/security/keystore \
 	external/openssl/include \
 	$(LOCAL_PATH)/include \

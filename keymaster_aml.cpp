@@ -28,7 +28,7 @@
 #include <openssl/err.h>
 #include <openssl/x509.h>
 
-#include <utils/UniquePtr.h>
+#include <UniquePtr.h>
 
 // For debugging
 //#define LOG_NDEBUG 0
@@ -40,41 +40,53 @@
 
 #ifdef USE_SECUREOS
 #include <keymaster_secure_api.h>
+#define KEYNAME_LEN (16)
 
 struct aml_keyblob{
-	unsigned char* handle;
+	unsigned char handle[KEYNAME_LEN+1];
 	size_t handle_length;
 };
 typedef struct aml_keyblob aml_keyblob_t;
 typedef UniquePtr<aml_keyblob_t> Unique_aml_keyblob_t;
 
 static int aml_wrap_key(uint8_t* handle, const size_t handle_length, uint8_t** keyBlob, size_t* keyBlobLength) {
-    Unique_aml_keyblob_t derData(new(aml_keyblob_t));
-	if (derData.get() == NULL){
-        ALOGE("Error: could not allocate memory for key blob");
+	Unique_aml_keyblob_t derData(new(aml_keyblob_t));
+	if (derData.get() == NULL) {
+		ALOGE("Error: could not allocate memory for key blob");
 		return -1;
 	}
 
-	derData.get()->handle = handle;
+	if (NULL == handle || handle_length > sizeof(derData.get()->handle)) {
+		ALOGE("Error: invalid input");
+		return -1;
+	}
+
+	memcpy(derData.get()->handle, handle, handle_length);
 	derData.get()->handle_length = handle_length;
 
-    *keyBlobLength = sizeof(aml_keyblob_t);
-    *keyBlob = (uint8_t*)derData.release();
+	*keyBlobLength = sizeof(aml_keyblob_t);
+	*keyBlob = (uint8_t*)derData.release();
 
 	return 0;
 }
 
-static int aml_unwrap_key(const uint8_t* key_blob, const size_t, uint8_t** handle, size_t* handle_length) 
+/* Copy data in aml_keyblob into buffer passed in */
+static int aml_unwrap_key(const uint8_t* key_blob, const size_t, uint8_t* handle, size_t* handle_length)
 {
 	const aml_keyblob_t* temp = (const aml_keyblob_t*)key_blob;
 
 	// Sanity check
-	if (NULL == key_blob){
-        ALOGE("Error: invalid input.");
+	if (NULL == key_blob) {
+		ALOGE("Error: invalid input.");
 		return -1;
 	}
 
-	*handle = temp->handle;
+	if (NULL == handle || *handle_length < temp->handle_length) {
+		ALOGE("Error: invalid input");
+		return -1;
+	}
+
+	memcpy(handle, temp->handle, temp->handle_length);
 	*handle_length = temp->handle_length;
 
 	return 0;
@@ -82,30 +94,31 @@ static int aml_unwrap_key(const uint8_t* key_blob, const size_t, uint8_t** handl
 
 __attribute__ ((visibility ("default")))
 int aml_delete_keypair(const keymaster_device_t* dev,
-        const uint8_t* key_blob, const size_t key_blob_length) {
-	
-	uint8_t* handle = NULL;
-	size_t handle_length = 0;
+		const uint8_t* key_blob, const size_t key_blob_length) {
 
-    if (NULL == key_blob || 0 == key_blob_length || NULL == dev) {
-        ALOGW("Error: key_blob == NULL");
-        return -1;
-    }
+	uint8_t handle[KEYNAME_LEN+1] = {0};
+	size_t handle_length = sizeof(handle);
 
-    aml_unwrap_key(key_blob, key_blob_length, &handle, &handle_length);
-
-	if (KM_secure_delete_keypair(dev, handle, handle_length) < 0){
-        ALOGE("Error: Fail to issue KM_secure_delete_keypair");
-        return -1;
+	if (NULL == key_blob || 0 == key_blob_length || NULL == dev) {
+		ALOGW("Error: key_blob == NULL");
+		return -1;
 	}
-	
+
+	aml_unwrap_key(key_blob, key_blob_length, handle, &handle_length);
+	ALOGI("handle= %x, handle_length =%d\n", (int)handle, handle_length);
+
+	if (KM_secure_delete_keypair(dev, handle, handle_length) < 0) {
+		ALOGE("Error: Fail to issue KM_secure_delete_keypair");
+		return -1;
+	}
+
 	return 0;
 }
 
 #endif
 __attribute__ ((visibility ("default")))
 int aml_generate_keypair(const keymaster_device_t* dev,
-        const keymaster_keypair_t key_type, const void* key_params,
+		const keymaster_keypair_t key_type, const void* key_params,
 		uint8_t** key_blob, size_t* key_blob_length) {
 
 	ALOGE("=== aml_generate_keypair ====");
@@ -123,47 +136,47 @@ int aml_generate_keypair(const keymaster_device_t* dev,
 	size_t key_handle_length = 0;
 
 	if (KM_secure_generate_keypair(dev, key_type, key_params, &key_handle, &key_handle_length) < 0){
-	    ALOGE("Error: KM_secure_generate_keypair fails.");
+		ALOGE("Error: KM_secure_generate_keypair fails.");
 		return -1;
 	}
 	aml_wrap_key(key_handle, key_handle_length, key_blob, key_blob_length);
 #else
-    if (openssl_generate_keypair(dev, key_type, key_params, key_blob, key_blob_length) < 0){
-        ALOGE("Error: openssl_generate_keypair fails");
-        return -1;
+	if (openssl_generate_keypair(dev, key_type, key_params, key_blob, key_blob_length) < 0) {
+		ALOGE("Error: openssl_generate_keypair fails");
+		return -1;
 	}
 #endif
-    return 0;
+	return 0;
 }
 
 __attribute__ ((visibility ("default")))
 int aml_import_keypair(const keymaster_device_t* dev,
-        const uint8_t* key, const size_t key_length,
-        uint8_t** key_blob, size_t* key_blob_length) {
+		const uint8_t* key, const size_t key_length,
+		uint8_t** key_blob, size_t* key_blob_length) {
 
 	// Sanity check
-    if (key == NULL) {
-        ALOGE("Error: input key == NULL");
-        return -1;
-    } else if (key_blob == NULL || key_blob_length == NULL) {
-        ALOGE("Error: output key blob or length == NULL");
-        return -1;
-    }
+	if (key == NULL) {
+		ALOGE("Error: input key == NULL");
+		return -1;
+	} else if (key_blob == NULL || key_blob_length == NULL) {
+		ALOGE("Error: output key blob or length == NULL");
+		return -1;
+	}
 
 #ifdef USE_SECUREOS
 	uint8_t* key_handle = NULL;
 	size_t key_handle_length = 0;
 
-    ALOGE("key length = %d", key_length);
-    if (KM_secure_import_keypair(dev, key, key_length, &key_handle, &key_handle_length) < 0){
-        ALOGE("Error: KM_secure_import_keypair fails");
-        return -1;
-    }
+	ALOGI("key length = %d", key_length);
+	if (KM_secure_import_keypair(dev, key, key_length, &key_handle, &key_handle_length) < 0) {
+		ALOGE("Error: KM_secure_import_keypair fails");
+		return -1;
+	}
 	aml_wrap_key(key_handle, key_handle_length, key_blob, key_blob_length);
 #else
-    if (openssl_import_keypair(dev, key, key_length, key_blob, key_blob_length) < 0){
-        ALOGE("Error: openssl_import_keypair fails");
-        return -1;
+	if (openssl_import_keypair(dev, key, key_length, key_blob, key_blob_length) < 0) {
+		ALOGE("Error: openssl_import_keypair fails");
+		return -1;
 	}
 #endif
 	return 0;
@@ -171,73 +184,81 @@ int aml_import_keypair(const keymaster_device_t* dev,
 
 __attribute__ ((visibility ("default")))
 int aml_get_keypair_public(const struct keymaster_device* dev,
-        const uint8_t* key_blob, const size_t key_blob_length,
-        uint8_t** x509_data, size_t* x509_data_length) {
+		const uint8_t* key_blob, const size_t key_blob_length,
+		uint8_t** x509_data, size_t* x509_data_length) {
 
 	int retVal = -1;
 
 	ALOGE("=== aml_get_keypair_public ====");
-    if (x509_data == NULL || x509_data_length == NULL) {
-        ALOGE("Error: output public key buffer == NULL");
-        return -1;
-    }
+	if (x509_data == NULL || x509_data_length == NULL) {
+		ALOGE("Error: output public key buffer == NULL");
+		return -1;
+	}
 
 #ifdef USE_SECUREOS
-	uint8_t* handle = NULL;
-	size_t handle_length = 0;
+	uint8_t handle[KEYNAME_LEN+1] = {0};
+	//uint8_t* handle = NULL;
+	size_t handle_length = sizeof(handle);
 
-    aml_unwrap_key(key_blob, key_blob_length, &handle, &handle_length);
-    retVal = KM_secure_get_keypair_public(dev, handle, handle_length, x509_data, x509_data_length);
+	aml_unwrap_key(key_blob, key_blob_length, handle, &handle_length);
+	retVal = KM_secure_get_keypair_public(dev, handle, handle_length, x509_data, x509_data_length);
 	if (retVal < 0){
-        ALOGE("Error: KM_secure_get_keypair_public fails.");
+		ALOGE("Error: KM_secure_get_keypair_public fails.");
 	}
 #else
-    retVal = openssl_get_keypair_public(dev, key_blob, key_blob_length, x509_data, x509_data_length);
+	retVal = openssl_get_keypair_public(dev, key_blob, key_blob_length, x509_data, x509_data_length);
 	if (retVal < 0){
-        ALOGE("Error: openssl_get_keypair_public fails.");
+		ALOGE("Error: openssl_get_keypair_public fails.");
 	}
 #endif
 
-    return retVal;
+	return retVal;
 }
 
 __attribute__ ((visibility ("default")))
 int aml_sign_data(const keymaster_device_t* dev,
-        const void* params,
-        const uint8_t* key_blob, const size_t key_blob_length,
-        const uint8_t* data, const size_t data_length,
-        uint8_t** signed_data, size_t* signed_data_length) {
+		const void* params,
+		const uint8_t* key_blob, const size_t key_blob_length,
+		const uint8_t* data, const size_t data_length,
+		uint8_t** signed_data, size_t* signed_data_length) {
 
 	int retVal = -1;
 
-    if (data == NULL) {
-        ALOGW("input data to sign == NULL");
-        return retVal;
-    } else if (signed_data == NULL || signed_data_length == NULL) {
-        ALOGW("output signature buffer == NULL");
-        return retVal;
-    }
+	if (data == NULL) {
+		ALOGW("input data to sign == NULL");
+		return retVal;
+	} else if (signed_data == NULL || signed_data_length == NULL) {
+		ALOGW("output signature buffer == NULL");
+		return retVal;
+	}
 
 #ifdef USE_SECUREOS
-	uint8_t* handle = NULL;
-	size_t handle_length = 0;
-    int key_type;
+	uint8_t handle[KEYNAME_LEN+1] = {0};
+	//uint8_t* handle = NULL;
+	size_t handle_length = sizeof(handle);
+	int key_type;
 
-    aml_unwrap_key(key_blob, key_blob_length, &handle, &handle_length);
-    key_type = KM_secure_get_key_type(handle);
+	aml_unwrap_key(key_blob, key_blob_length, handle, &handle_length);
+	ALOGI("handle = %s", handle);
 
-    retVal = KM_secure_sign_data(dev, (keymaster_keypair_t)key_type, 
-			                          params,
-			                          handle, handle_length,
-									  data, data_length,
-									  signed_data, signed_data_length);
+	key_type = KM_secure_get_key_type(handle, handle_length);
+	if (-1 == key_type) {
+		ALOGE("%s: invalid keytype",__func__);
+		return retVal;
+	}
+
+	retVal = KM_secure_sign_data(dev, (keymaster_keypair_t)key_type,
+			params,
+			handle, handle_length,
+			data, data_length,
+			signed_data, signed_data_length);
 	if (retVal < 0){
-        ALOGE("Error: KM_secure_sign_data fails.");
+		ALOGE("Error: KM_secure_sign_data fails.");
 	}
 #else
-    retVal = openssl_sign_data(dev, params, key_blob, key_blob_length, data, data_length, signed_data, signed_data_length);
+	retVal = openssl_sign_data(dev, params, key_blob, key_blob_length, data, data_length, signed_data, signed_data_length);
 	if (retVal < 0){
-        ALOGE("Error: openssl_sign_data fails.");
+		ALOGE("Error: openssl_sign_data fails.");
 	}
 #endif
 	return retVal;
@@ -245,36 +266,44 @@ int aml_sign_data(const keymaster_device_t* dev,
 
 __attribute__ ((visibility ("default")))
 int aml_verify_data(const keymaster_device_t* dev,
-        const void* params,
-        const uint8_t* key_blob, const size_t key_blob_length,
-        const uint8_t* signed_data, const size_t signed_data_length,
-        const uint8_t* signature, const size_t signature_length) {
+		const void* params,
+		const uint8_t* key_blob, const size_t key_blob_length,
+		const uint8_t* signed_data, const size_t signed_data_length,
+		const uint8_t* signature, const size_t signature_length) {
 	int retVal = -1;
 
-    if (signed_data == NULL || signature == NULL) {
-        ALOGE("Error: data or signature buffers == NULL");
-        return retVal;
-    }
+	if (signed_data == NULL || signature == NULL) {
+		ALOGE("Error: data or signature buffers == NULL");
+		return retVal;
+	}
 #ifdef USE_SECUREOS
-	uint8_t* handle = NULL;
-	size_t handle_length = 0;
+
+	uint8_t handle[KEYNAME_LEN+1] = {0};
+	//uint8_t* handle = NULL;
+	size_t handle_length = sizeof(handle);
 	int key_type = -1;
 
-    aml_unwrap_key(key_blob, key_blob_length, &handle, &handle_length);
-    key_type = KM_secure_get_key_type(handle);
+	aml_unwrap_key(key_blob, key_blob_length, handle, &handle_length);
+	ALOGE("handle = %s",handle);
 
-    retVal = KM_secure_verify_data(dev, (keymaster_keypair_t)key_type, 
-			                          params,
-			                          handle, handle_length,
-									  signed_data, signed_data_length,
-									  signature, signature_length);
+	key_type = KM_secure_get_key_type(handle, handle_length);
+	if (-1 == key_type) {
+		ALOGE("%s: invalid keytype",__func__);
+		return retVal;
+	}
+
+	retVal = KM_secure_verify_data(dev, (keymaster_keypair_t)key_type,
+			params,
+			handle, handle_length,
+			signed_data, signed_data_length,
+			signature, signature_length);
 	if (retVal < 0){
-        ALOGE("Error: KM_secure_verify_data fails.");
+		ALOGE("Error: KM_secure_verify_data fails.");
 	}
 #else
-    retVal = openssl_verify_data(dev, params, key_blob, key_blob_length, signed_data, signed_data_length, signature, signature_length);
+	retVal = openssl_verify_data(dev, params, key_blob, key_blob_length, signed_data, signed_data_length, signature, signature_length);
 	if (retVal < 0){
-        ALOGE("Error: openssl_verify_data fails.");
+		ALOGE("Error: openssl_verify_data fails.");
 	}
 #endif
 	return retVal;
@@ -283,8 +312,8 @@ int aml_verify_data(const keymaster_device_t* dev,
 __attribute__ ((visibility ("default")))
 int aml_terminate() {
 #ifdef USE_SECUREOS
-    return KM_Secure_Terminate();
+	return KM_Secure_Terminate();
 #else
-    return 0;
+	return 0;
 #endif
 }

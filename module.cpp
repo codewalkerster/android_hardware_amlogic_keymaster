@@ -26,7 +26,7 @@
 
 #include <openssl/err.h>
 
-#include <utils/UniquePtr.h>
+#include <UniquePtr.h>
 
 // For debugging
 //#define LOG_NDEBUG 0
@@ -64,8 +64,7 @@ static int aml_km_open(const hw_module_t* module, const char* name,
     dev->common.module = (struct hw_module_t*) module;
     dev->common.close = aml_km_close;
 
-	// Set flags to values other than KEYMASTER_SOFTWARE_ONLY
-    dev->flags = 0;
+    dev->flags = KEYMASTER_BLOBS_ARE_STANDALONE;
 
     dev->generate_keypair = aml_generate_keypair;
     dev->import_keypair = aml_import_keypair;
@@ -95,7 +94,7 @@ struct keystore_module HAL_MODULE_INFO_SYM
 __attribute__ ((visibility ("default"))) = {
     common: {
         tag: HARDWARE_MODULE_TAG,
-        module_api_version: KEYMASTER_MODULE_API_VERSION_0_2,
+        module_api_version: KEYMASTER_MODULE_API_VERSION_0_3,
         hal_api_version: HARDWARE_HAL_API_VERSION,
         id: KEYSTORE_HARDWARE_MODULE_ID,
         name: "Keymaster Amlogic HAL",
