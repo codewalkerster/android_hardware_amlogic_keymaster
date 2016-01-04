@@ -14,79 +14,81 @@
 
 LOCAL_PATH := $(call my-dir)
 
+BUILD_CA_FROM_SOURCE := true
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := keystore.amlogic
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
-LOCAL_SRC_FILES := module.cpp
+LOCAL_SRC_FILES := module.cpp \
+		   optee/aml_keymaster1.cpp \
+		   optee/keymaster1_secure_api.cpp \
+		   optee/aml_keymaster_context.cpp \
+		   optee/aml_integrity_assured_key_blob.cpp \
+		   optee/keymaster_ca.c \
+
 LOCAL_C_INCLUDES := \
-	libnativehelper/include/nativehelper/\
-	system/security/keystore \
-	external/openssl/include 
+    system/security/keystore \
+    $(LOCAL_PATH)/include \
+    system/keymaster/ \
+    system/keymaster/include \
+    external/boringssl/include \
+    vendor/amlogic/tdk/ca_export_arm/include \
+    vendor/amlogic/tdk/ta_export/host_include \
+    hardware/amlogic/keymaster/optee
 
 LOCAL_CFLAGS = -fvisibility=hidden -Wall -Werror
-ifeq ($(TARGET_USE_SECUREOS),true)
-LOCAL_CFLAGS += -DUSE_SECUREOS
+LOCAL_CFLAGS += -DANDROID_BUILD
+ifeq ($(USE_SOFT_KEYSTORE), false)
+LOCAL_CFLAGS += -DUSE_HW_KEYMASTER
 endif
-LOCAL_SHARED_LIBRARIES := libcrypto liblog libkeystore_binder libamlkeymaster 
+LOCAL_SHARED_LIBRARIES := libcrypto \
+			  liblog \
+			  libkeystore_binder \
+			  libteec \
+			  libkeymaster_messages \
+			  libkeymaster1
+
 LOCAL_MODULE_TAGS := optional
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_SHARED_LIBRARY)
 
+######################################################
+#	TA Library
+######################################################
 include $(CLEAR_VARS)
-LOCAL_MODULE := libamlkeymaster
-LOCAL_SRC_FILES := keymaster_aml.cpp
-LOCAL_C_INCLUDES := \
-	libnativehelper/include/nativehelper/\
-	system/security/keystore \
-	external/openssl/include \
-	$(LOCAL_PATH)/include \
-	hardware/amlogic/keymaster/secure-os \
-	system/security/softkeymaster/include
-
-LOCAL_CFLAGS = -fvisibility=hidden -Wall -Werror
-
-LOCAL_SHARED_LIBRARIES := libcrypto liblog libkeystore_binder libsoftkeymaster
-
-ifeq ($(TARGET_USE_SECUREOS),true)
-#LOCAL_C_INCLUDES += vendor/amlogic/bdk/include
-LOCAL_SHARED_LIBRARIES += libotzapi
-LOCAL_STATIC_LIBRARIES := libamlkeymaster_api
-LOCAL_REQUIRED_MODULES := keymaster
-LOCAL_CFLAGS += -DUSE_SECUREOS
-endif
-
+LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_TAGS := optional
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
-include $(BUILD_SHARED_LIBRARY)
-
-ifeq ($(TARGET_USE_SECUREOS),true)
-#include $(CLEAR_VARS)
-#LOCAL_MODULE := libamlkeymaster_api
-#LOCAL_CFLAGS := -DANDROID_BUILD
-#
-#LOCAL_C_INCLUDES := \
-#	vendor/amlogic/bdk/include
-#
-#LOCAL_SHARED_LIBRARIES := \
-#	libotzapi
-#
-#LOCAL_SHARED_LIBRARIES += libcutils liblog
-#LOCAL_SRC_FILES := secure-os/keymaster_secure_api.c
-#LOCAL_MODULE_TAGS := optional
-#include $(BUILD_STATIC_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_PREBUILT_LIBS := secure-os/libamlkeymaster_api.a
-include $(BUILD_MULTI_PREBUILT)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := keymaster
-LOCAL_MODULE_CLASS := SHARED_LIBRARIES
-LOCAL_MODULE_SUFFIX := .tzo
-LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)
-LOCAL_SRC_FILES := secure-os/$(LOCAL_MODULE)$(LOCAL_MODULE_SUFFIX)
+LOCAL_MODULE := 27768e80-717d-11e5-b4b00002a5d5c51b
+LOCAL_MODULE_SUFFIX := .ta
+LOCAL_MODULE_PATH := $(TARGET_OUT)/lib/teetz
+LOCAL_SRC_FILES := optee/$(LOCAL_MODULE)$(LOCAL_MODULE_SUFFIX)
 include $(BUILD_PREBUILT)
 
-endif
+
+# Unit tests for libkeymaster
+include $(CLEAR_VARS)
+LOCAL_MODULE := amlkeymaster_tests
+LOCAL_SRC_FILES := \
+	unit_test/android_keymaster_test.cpp \
+	unit_test/android_keymaster_test_utils.cpp
+
+LOCAL_C_INCLUDES := \
+	external/boringssl/include \
+	system/keymaster/include \
+	system/keymaster \
+	system/security/softkeymaster/include
+
+LOCAL_CFLAGS = -Wall -Werror -Wunused
+LOCAL_CLANG_CFLAGS += -Wno-error=unused-const-variable -Wno-error=unused-private-field
+LOCAL_MODULE_TAGS := tests
+LOCAL_SHARED_LIBRARIES := \
+	libsoftkeymasterdevice \
+	libkeymaster_messages \
+	libkeymaster1 \
+	libcrypto \
+	libsoftkeymaster \
+	libhardware
+
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+include $(BUILD_NATIVE_TEST)
+
