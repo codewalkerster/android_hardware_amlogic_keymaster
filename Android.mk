@@ -46,7 +46,8 @@ LOCAL_SHARED_LIBRARIES := libcrypto \
 			  libkeystore_binder \
 			  libteec \
 			  libkeymaster_messages \
-			  libkeymaster1
+			  libkeymaster1 \
+			  libteec
 
 LOCAL_MODULE_TAGS := optional
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
