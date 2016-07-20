@@ -47,7 +47,7 @@ keymaster_error_t AmlCreateKeyBlob(const AuthorizationSet& auths, keymaster_key_
 keymaster_error_t AmlParseKeyBlob(const KeymasterKeyBlob& blob,
 		const AuthorizationSet& additional_params,
 		KeymasterKeyBlob* key_material, AuthorizationSet* hw_enforced,
-		AuthorizationSet* sw_enforced);
+		AuthorizationSet* sw_enforced, bool verify);
 
 keymaster_error_t ParseOldSoftkeymasterBlob(const KeymasterKeyBlob& blob,
 		KeymasterKeyBlob* key_material,

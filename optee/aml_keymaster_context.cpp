@@ -19,8 +19,6 @@
 using std::unique_ptr;
 
 static uint8_t master_key_bytes[AES_BLOCK_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-const int NONCE_LENGTH = 12;
-const int TAG_LENGTH = 16;
 const KeymasterKeyBlob MASTER_KEY(master_key_bytes, array_length(master_key_bytes));
 
 static keymaster_error_t AmlTranslateAuthorizationSetError(AuthorizationSet::Error err) {
@@ -94,61 +92,6 @@ static keymaster_error_t AmlSetAuthorizations(const AuthorizationSet& key_descri
     return AmlTranslateAuthorizationSetError(sw_enforced->is_valid());
 }
 
-static keymaster_error_t AmlSetHwEnforced(const AuthorizationSet& key_description,
-		const keymaster_key_origin_t origin,
-		AuthorizationSet* hw_enforced)
-{
-	keymaster_error_t error = KM_ERROR_OK;
-	keymaster_algorithm_t algorithm;
-	uint64_t public_exponent;
-	uint32_t key_size;
-    keymaster_digest_t digest;
-    keymaster_padding_t padding;
-
-	if (!key_description.GetTagValue(TAG_ALGORITHM, &algorithm)) {
-		error = KM_ERROR_UNSUPPORTED_ALGORITHM;
-    } else if (origin == KM_ORIGIN_GENERATED) {
-        hw_enforced->push_back(TAG_ALGORITHM, algorithm);
-        if (key_description.GetTagValue(TAG_RSA_PUBLIC_EXPONENT, &public_exponent))
-            hw_enforced->push_back(TAG_RSA_PUBLIC_EXPONENT, public_exponent);
-        if (key_description.GetTagValue(TAG_KEY_SIZE, &key_size))
-            hw_enforced->push_back(TAG_KEY_SIZE, key_size);
-        if (key_description.GetTagValue(TAG_DIGEST, &digest))
-            hw_enforced->push_back(TAG_DIGEST, digest);
-        if (key_description.GetTagValue(TAG_PADDING, &padding))
-            hw_enforced->push_back(TAG_PADDING, padding);
-#if 0
-        if (algorithm == KM_ALGORITHM_RSA) {
-            /* public exponent */
-            if (key_description.GetTagValue(TAG_RSA_PUBLIC_EXPONENT, &public_exponent)) {
-                hw_enforced->push_back(TAG_RSA_PUBLIC_EXPONENT, public_exponent);
-            }
-            /* key size */
-            if (key_description.GetTagValue(TAG_KEY_SIZE, &key_size)) {
-                hw_enforced->push_back(TAG_KEY_SIZE, key_size);
-            }
-        }
-        else if (algorithm == KM_ALGORITHM_EC) {
-            /* key size */
-            if (key_description.GetTagValue(TAG_KEY_SIZE, &key_size)) {
-                hw_enforced->push_back(TAG_KEY_SIZE, key_size);
-            }
-        }
-        else if (algorithm == KM_ALGORITHM_HMAC) {
-        }
-        else if (algorithm == KM_ALGORITHM_AES) {
-        }
-        else {
-            error = KM_ERROR_UNSUPPORTED_ALGORITHM;
-        }
-#endif
-        hw_enforced->push_back(TAG_ORIGIN, origin);
-    }
-
-out:
-	return error;
-}
-
 keymaster_error_t AmlCreateKeyBlob(
 		const AuthorizationSet& key_description,
 		const keymaster_key_origin_t origin,
@@ -176,7 +119,8 @@ keymaster_error_t AmlParseKeyBlob(
 		const AuthorizationSet& additional_params,
 		KeymasterKeyBlob* key_material,
 		AuthorizationSet* hw_enforced,
-		AuthorizationSet* sw_enforced) {
+		AuthorizationSet* sw_enforced,
+		bool verify) {
 
 	AuthorizationSet hidden;
 	keymaster_error_t error = AmlBuildHiddenAuthorizations(additional_params, &hidden);
@@ -185,7 +129,7 @@ keymaster_error_t AmlParseKeyBlob(
 
 	// Assume it's an integrity-assured blob (new software-only blob, or new keymaster0-backed
 	// blob).
-	error = AmlDeserializeIntegrityAssuredBlob(blob, hidden, key_material, hw_enforced, sw_enforced);
+	error = AmlDeserializeIntegrityAssuredBlob(blob, hidden, key_material, hw_enforced, sw_enforced, verify);
 	return error;
 //	return ParseKeymaster1HwBlob(blob, additional_params, key_material, hw_enforced,
 //			sw_enforced);

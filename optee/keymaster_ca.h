@@ -110,14 +110,11 @@ TEEC_Result asymmetric_sign_tee_ca(
 		size_t *dst_len);
 
 TEEC_Result digest_init_ca(const uint32_t main_algo,
-        TEE_OperationHandle* op, uint32_t digest_algo);
+        TEE_OperationHandle* oph, uint32_t digest_algo);
 
 TEEC_Result hmac_keyblob_init_ca(const uint32_t hmac_algo,
 		const uint32_t hmac_obj_type,
-		TEE_OperationHandle* op);
-
-TEEC_Result mac_init_ca(const uint32_t main_algo,
-		TEE_OperationHandle* op);
+		TEE_OperationHandle* oph);
 
 TEEC_Result cipher_init_ca(TEE_OperationHandle oph,
 		const void *iv, size_t iv_len);

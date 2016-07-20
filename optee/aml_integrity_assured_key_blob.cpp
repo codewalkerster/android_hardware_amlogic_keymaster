@@ -56,7 +56,6 @@ namespace keymaster {
 
 static const uint8_t BLOB_VERSION = 0;
 static const size_t HMAC_SIZE = 8;
-static const char HMAC_KEY[] = "IntegrityAssuredBlob0";
 
 inline size_t min(size_t a, size_t b) {
     if (a < b)
@@ -146,7 +145,8 @@ keymaster_error_t AmlDeserializeIntegrityAssuredBlob(const KeymasterKeyBlob& key
                                                   const AuthorizationSet& hidden,
                                                   KeymasterKeyBlob* key_material,
                                                   AuthorizationSet* hw_enforced,
-                                                  AuthorizationSet* sw_enforced) {
+                                                  AuthorizationSet* sw_enforced,
+                                                  bool verify) {
     const uint8_t* p = key_blob.begin();
     const uint8_t* end = key_blob.end();
 
@@ -155,10 +155,12 @@ keymaster_error_t AmlDeserializeIntegrityAssuredBlob(const KeymasterKeyBlob& key
 
     uint8_t computed_hmac[HMAC_SIZE];
     memcpy(computed_hmac, key_blob.end() - HMAC_SIZE, HMAC_SIZE);
-    keymaster_error_t error = ComputeHmac(key_blob.begin(), key_blob.key_material_size - HMAC_SIZE,
-                                          hidden, computed_hmac, true);
-    if (error != KM_ERROR_OK)
-        return error;
+    if (verify) {
+        keymaster_error_t error = ComputeHmac(key_blob.begin(), key_blob.key_material_size - HMAC_SIZE,
+                hidden, computed_hmac, true);
+        if (error != KM_ERROR_OK)
+            return error;
+    }
 
     if (*p != BLOB_VERSION)
         return KM_ERROR_INVALID_KEY_BLOB;

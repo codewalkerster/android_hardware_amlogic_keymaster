@@ -35,7 +35,8 @@ keymaster_error_t AmlDeserializeIntegrityAssuredBlob(const KeymasterKeyBlob& key
                                                   const AuthorizationSet& hidden,
                                                   KeymasterKeyBlob* key_material,
                                                   AuthorizationSet* hw_enforced,
-                                                  AuthorizationSet* sw_enforced);
+                                                  AuthorizationSet* sw_enforced,
+                                                  bool verify);
 
 }  // namespace keymaster;
 

@@ -74,7 +74,6 @@ int KM_Secure_Initialize(void)
  */
 int KM_Secure_Terminate(void)
 {
-    TEEC_Operation operation;
     TEEC_Result result;
     result = Terminate_ca();
     if (result != TEEC_SUCCESS) {
@@ -168,164 +167,6 @@ int KM_secure_query_key_existence(const keymaster1_device_t* dev __unused, const
         return -1;
     else
         return 0;
-}
-
-#define MAX_TMP_ENFORCED_LEN (20)
-static keymaster_key_param_t tmp_hw_enforced[MAX_TMP_ENFORCED_LEN];
-static uint32_t tmp_hw_enforced_len = 0;
-static keymaster_key_param_t tmp_sw_enforced[MAX_TMP_ENFORCED_LEN];
-static uint32_t tmp_sw_enforced_len = 0;
-
-static void clear_tmp_enforced(void)
-{
-    keymaster_free_param_values(tmp_hw_enforced, tmp_hw_enforced_len);
-    keymaster_free_param_values(tmp_sw_enforced, tmp_sw_enforced_len);
-    memset(tmp_hw_enforced, 0, sizeof(tmp_hw_enforced));
-    memset(tmp_sw_enforced, 0, sizeof(tmp_sw_enforced));
-    tmp_hw_enforced_len = 0;
-    tmp_sw_enforced_len = 0;
-}
-static keymaster_error_t push_tmp_enforced(keymaster_key_param_t* dst, keymaster_key_param_t* src, uint32_t* len)
-{
-    //keymaster_tag_type_t tag_type = KM_INVALID;
-    uint8_t* blob_tmp = NULL;
-
-    if (*len >= MAX_TMP_ENFORCED_LEN)
-        return KM_ERROR_INSUFFICIENT_BUFFER_SPACE;
-    /*TODO: if keyblob, do we need to copy the data? */
-    //memcpy(&dst[*len], src, sizeof(keymaster_key_param_t));
-    //tag_type = keymaster_tag_get_type(src->tag);
-    switch (keymaster_tag_get_type(src->tag)) {
-        case KM_BIGNUM:
-        case KM_BYTES:
-            dst[*len].tag = src->tag;
-            blob_tmp = (uint8_t*)malloc(src->blob.data_length);
-            memcpy(blob_tmp, src->blob.data, src->blob.data_length);
-            dst[*len].blob.data = blob_tmp;
-            dst[*len].blob.data_length = src->blob.data_length;
-            break;
-        default:
-            dst[*len] = *src;
-            break;
-    }
-    (*len)++;
-    return KM_ERROR_OK;
-}
-
-static keymaster_error_t do_build_characteristics(const keymaster_key_param_set_t* params,
-        keymaster_key_characteristics_t* characteristics,
-        keymaster_key_origin_t origin)
-{
-    keymaster_error_t error = KM_ERROR_OK;
-    keymaster_key_param_t* item = params->params;
-    keymaster_key_param_t tmp_item;
-    uint32_t i = 0;
-
-    clear_tmp_enforced();
-    for (i = 0; i < params->length; i++) {
-        switch (item[i].tag) {
-            // These cannot be specified by the client.
-            case KM_TAG_ROOT_OF_TRUST:
-            case KM_TAG_ORIGIN:
-                LOG_D("Root of trust and origin tags may not be specified: %d\n", __LINE__);
-                return KM_ERROR_INVALID_TAG;
-                // These don't work.
-            case KM_TAG_ROLLBACK_RESISTANT:
-                LOG_D("KM_TAG_ROLLBACK_RESISTANT not supported: %d\n", __LINE__);
-                return KM_ERROR_UNSUPPORTED_TAG;
-                // These are hidden.
-            case KM_TAG_APPLICATION_ID:
-            case KM_TAG_APPLICATION_DATA:
-                break;
-            case KM_TAG_ALGORITHM:
-            case KM_TAG_RSA_PUBLIC_EXPONENT:
-            case KM_TAG_KEY_SIZE:
-                error = push_tmp_enforced(tmp_hw_enforced, &item[i], &tmp_hw_enforced_len);
-                if (error != KM_ERROR_OK) {
-                    LOG_D("push tag(%x) failed\n", item[i].tag);
-                    goto out;
-                }
-                break;
-            default:
-                error = push_tmp_enforced(tmp_sw_enforced, &item[i], &tmp_sw_enforced_len);
-                if (error != KM_ERROR_OK) {
-                    LOG_D("push tag(%x) failed\n", item[i].tag);
-                    goto out;
-                }
-                break;
-        }
-
-    }
-    /* push KM_TAG_CREATION_DATETIME into sw_enforced */
-    tmp_item = keymaster_param_date(KM_TAG_CREATION_DATETIME, time(NULL)*1000 /* in ms*/);
-    error = push_tmp_enforced(tmp_sw_enforced, &tmp_item, &tmp_sw_enforced_len);
-    if (error != KM_ERROR_OK) {
-        LOG_D("push tag(%x) failed\n", KM_TAG_CREATION_DATETIME);
-        goto out;
-    }
-
-    /* how to handle KM_TAG_ORIGIN for keygen or import */
-    tmp_item = keymaster_param_enum(KM_TAG_ORIGIN, origin);
-    error = push_tmp_enforced(tmp_hw_enforced, &tmp_item, &tmp_hw_enforced_len);
-    if (error != KM_ERROR_OK) {
-        LOG_D("push tag(%x) failed\n", KM_TAG_ORIGIN);
-        goto out;
-    }
-
-    if (tmp_hw_enforced_len) {
-        characteristics->hw_enforced.params =
-            (keymaster_key_param_t*)malloc(sizeof(keymaster_key_param_t)*tmp_hw_enforced_len);
-        if (!characteristics->hw_enforced.params) {
-            error = KM_ERROR_MEMORY_ALLOCATION_FAILED;
-            goto out;
-        }
-        memcpy(characteristics->hw_enforced.params, tmp_hw_enforced,
-                sizeof(keymaster_key_param_t)*tmp_hw_enforced_len);
-        characteristics->hw_enforced.length = tmp_hw_enforced_len;
-    }
-    if (tmp_sw_enforced_len) {
-        characteristics->sw_enforced.params =
-            (keymaster_key_param_t*)malloc(sizeof(keymaster_key_param_t)*tmp_sw_enforced_len);
-        if (!characteristics->sw_enforced.params) {
-            error = KM_ERROR_MEMORY_ALLOCATION_FAILED;
-            goto out;
-        }
-        memcpy(characteristics->sw_enforced.params, tmp_sw_enforced,
-                sizeof(keymaster_key_param_t)*tmp_sw_enforced_len);
-        characteristics->sw_enforced.length = tmp_sw_enforced_len;
-    }
-out:
-    return error;
-}
-
-
-static keymaster_error_t build_characteristics(const keymaster_key_param_set_t* params,
-        keymaster_key_characteristics_t** characteristics,
-        keymaster_key_origin_t origin)
-{
-    keymaster_error_t ret = KM_ERROR_OK;
-    keymaster_key_characteristics_t* tmp = NULL;
-    //	keymaster_algorithm_t algo = -1;
-
-    tmp = (keymaster_key_characteristics_t*)(malloc(sizeof(keymaster_key_characteristics_t)));
-    if (!tmp) {
-        LOG_D("%s:%d: allocate characteristics failed\n", __func__, __LINE__);
-        ret = KM_ERROR_MEMORY_ALLOCATION_FAILED;
-        goto out;
-    }
-    ret = do_build_characteristics(params, tmp, origin);
-    if (ret != KM_ERROR_OK) {
-        goto out;
-    }
-    *characteristics = tmp;
-out:
-    if (ret != KM_ERROR_OK) {
-        if (tmp)
-            keymaster_free_characteristics(tmp);
-        free(tmp);
-        tmp = NULL;
-    }
-    return ret;
 }
 
 static uint32_t supported_rsa_key_len[] = {1024, 2048, 3072, 4096};
@@ -480,7 +321,7 @@ keymaster_error_t KM1_secure_generate_key(
             goto out;
         }
         if (TEEC_SUCCESS != generate_rsa_keypair_ca(aml_key->handle, sizeof(aml_key->handle), &rsa_params)) {
-            LOG_D("%s:%d: generate_rsa_keypair failed\n", __func__, __LINE__);
+            LOG_D("%s:%d: generate_rsa_keypair failed: mod: %u, exp: %llu\n", __func__, __LINE__, rsa_params.modulus_size, rsa_params.public_exponent);
             ret = KM_ERROR_UNKNOWN_ERROR;
             goto out;
         }
@@ -1161,7 +1002,7 @@ keymaster_error_t KM1_asymmetric_verify_with_handle(
         LOG_D("asymmetric_verify_tee_ca failed with res(%x)\n", res);
         ret = KM_ERROR_VERIFICATION_FAILED;
     }
-out:
+
     return ret;
 }
 
@@ -1218,7 +1059,6 @@ keymaster_error_t KM1_import_symmetric_key(
     TEE_Result res = TEEC_ERROR_GENERIC;
     keymaster_error_t ret = KM_ERROR_OK; /* Default */
     uint32_t dgst = 0;
-    uint32_t key_size_bits = 0;
 
     /* Sanity Check */
     if (false == get_ca_inited()) {

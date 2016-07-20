@@ -64,8 +64,6 @@
 using namespace keymaster;
 
 static const size_t GCM_NONCE_SIZE = 12;
-static const size_t GCM_MAX_TAG_LENGTH = 16;
-static const size_t GCM_MIN_TAG_LENGTH = 12;
 // Debug
 struct tag_table_entry {
     const char *name;
@@ -205,47 +203,7 @@ typedef struct am_operations am_operations_t;
 
 typedef UniquePtr<aml_keyblob_t> Unique_aml_keyblob_t;
 
-/* Copy data from aml_key to key_blob */
-static int aml_wrap_key(aml_keyblob_t* aml_key, uint8_t** key_blob, size_t* key_blob_len)
-{
-    Unique_aml_keyblob_t derData(new(aml_keyblob_t));
-    int ret = -1;
-
-    /* Sanity Check */
-    if (derData.get() == NULL || aml_key == NULL) {
-        LOG_D("%s:%d: invalid input\n", __func__, __LINE__);
-        goto out;
-    }
-
-    /* Copy Data */
-    memcpy(derData.get(), aml_key, sizeof(aml_keyblob_t));
-
-    /* Pass Data to Output Buffer */
-    *key_blob_len = sizeof(aml_keyblob_t);
-    *key_blob = (uint8_t*)derData.release();
-    ret = 0;
-out:
-    return ret;
-}
-
-/* Copy data from key_blob to aml_key */
-static int aml_unwrap_key(const uint8_t* key_blob, const size_t key_blob_len, aml_keyblob_t* aml_key)
-{
-    int ret = -1;
-    /* Sanity check */
-    if (key_blob == NULL || aml_key == NULL || key_blob_len != sizeof(aml_keyblob_t)) {
-        LOG_D("%s:%d: invalid input\n", __func__, __LINE__);
-        goto out;
-    }
-
-    /* Copy Data */
-    memcpy(aml_key, key_blob, sizeof(aml_keyblob_t));
-    ret = 0;
-out:
-    return ret;
-}
-
-    __attribute__ ((visibility ("default")))
+__attribute__ ((visibility ("default")))
 int aml_terminate()
 {
     //#ifdef USE_HW_KEYMASTER
@@ -474,8 +432,7 @@ keymaster_error_t get_supported_digests(
         *digests_length = digest_array_size / sizeof(keymaster_digest_t);
         *digests = reinterpret_cast<keymaster_digest_t*>(malloc(digest_array_size));
         memcpy(*digests, digest_array, digest_array_size);
-    }
-    else {
+    } else {
         *digests_length = 0;
         *digests = nullptr;
     }
@@ -591,7 +548,7 @@ keymaster_error_t aml_add_rng_entropy(const struct keymaster1_device* dev __unus
     return KM_ERROR_OK;
 }
 
-static void dump_tags(const char *name, const keymaster_key_param_set_t *params)
+void dump_tags(const char *name, const keymaster_key_param_set_t *params)
 {
     size_t i = 0, j =0;
     keymaster_key_param_t* item = params->params;
@@ -663,15 +620,10 @@ keymaster_error_t aml_generate_key(const struct keymaster1_device* dev,
     if (!dev || !params)
         return KM_ERROR_UNEXPECTED_NULL_POINTER;
 
-    if (!key_blob || !characteristics)
+    if (!key_blob)
         return KM_ERROR_OUTPUT_PARAMETER_NULL;
 
     memset(&aml_key, 0, sizeof(aml_keyblob_t));
-    if (*characteristics) {
-        /*pointer passed in already contains value. Free it first.*/
-        keymaster_free_characteristics(*characteristics);
-        *characteristics = NULL;
-    }
 
     if (!key_description.Reinitialize(*params)) {
         LOG_D("Reinitialize failed !", 0);
@@ -735,14 +687,14 @@ keymaster_error_t aml_get_key_characteristics(
         additional_params.push_back(TAG_APPLICATION_DATA, *app_data);
 
     error = AmlParseKeyBlob(blob, additional_params,
-            &key_material, &hw_enforced, &sw_enforced);
+            &key_material, &hw_enforced, &sw_enforced, true);
     if (error != KM_ERROR_OK) {
         LOG_E("fail to parse keyblob", 0);
         return error;
     }
 
     *characteristics = AmlBuildCharacteristics(hw_enforced, sw_enforced);
-out:
+
 	return error;
 }
 
@@ -874,7 +826,7 @@ keymaster_error_t aml_export_key(const struct keymaster1_device* dev __unused,
         additional_params.push_back(TAG_APPLICATION_DATA, *app_data);
     error = AmlParseKeyBlob(blob, additional_params,
             &key_material,
-            &hw_enforced, &sw_enforced);
+            &hw_enforced, &sw_enforced, true);
     CHK_ERR_AND_LEAVE(error, "AmlParseKeyBlob failed", out);
 #if 0
     keymaster_key_param_set_t tmp1, tmp2;
@@ -927,9 +879,10 @@ keymaster_error_t aml_delete_key(const struct keymaster1_device* dev __unused,
     AuthorizationSet additional_params;
     KeymasterKeyBlob key_material;
     AuthorizationSet hw_enforced, sw_enforced;
+    /* We don't want to verify keyblob because lacking of additional params*/
     error = AmlParseKeyBlob(blob, additional_params,
             &key_material,
-            &hw_enforced, &sw_enforced);
+            &hw_enforced, &sw_enforced, false);
     CHK_ERR_AND_LEAVE(error, "AmlParseKeyBlob failed", out);
 
     aml_key = reinterpret_cast<const aml_keyblob_t*>(key_material.begin());
@@ -1045,45 +998,6 @@ static keymaster_error_t aml_sym_authorized_purpose(
             return KM_ERROR_UNSUPPORTED_PURPOSE;
         default:
             return KM_ERROR_UNSUPPORTED_PURPOSE;
-    }
-}
-
-static keymaster_error_t check_rsa_digest(const keymaster_digest_t digest,
-										  const keymaster_padding_t padding,
-                                          const keymaster_purpose_t purpose)
-{
-	bool require_digest;
-
-    switch (purpose) {
-    case KM_PURPOSE_SIGN:
-    case KM_PURPOSE_VERIFY:
-        require_digest = (padding == KM_PAD_RSA_PSS);
-        break;
-    case KM_PURPOSE_ENCRYPT:
-    case KM_PURPOSE_DECRYPT:
-        require_digest = (padding == KM_PAD_RSA_OAEP);
-        break;
-    default:
-        LOG_D("unsupported purpose\n", 0);
-        return KM_ERROR_UNSUPPORTED_PURPOSE;
-    }
-	LOG_D("check_rsa_digest: padding = %u\n", (uint32_t)padding);
-	if (digest == KM_DIGEST_NONE) {
-        if (require_digest)
-            return KM_ERROR_INCOMPATIBLE_DIGEST;
-        return KM_ERROR_OK;
-    }
-    switch (digest) {
-        case KM_DIGEST_NONE:
-        case KM_DIGEST_MD5:
-        case KM_DIGEST_SHA1:
-        case KM_DIGEST_SHA_2_224:
-        case KM_DIGEST_SHA_2_256:
-        case KM_DIGEST_SHA_2_384:
-        case KM_DIGEST_SHA_2_512:
-            return KM_ERROR_OK;
-        default:
-            return KM_ERROR_UNSUPPORTED_DIGEST;
     }
 }
 
@@ -1556,7 +1470,7 @@ keymaster_error_t aml_begin(
     AuthorizationSet hw_enforced, sw_enforced;
     error = AmlParseKeyBlob(blob, additional_params,
             &key_material,
-            &hw_enforced, &sw_enforced);
+            &hw_enforced, &sw_enforced, true);
     if (error != KM_ERROR_OK) {
         LOG_E("AmlParseKeyBlob failed", 0);
         error = KM_ERROR_UNKNOWN_ERROR;
@@ -1593,13 +1507,21 @@ keymaster_error_t aml_begin(
         goto out;
     }
 
-    memset(handles, 0, sizeof(am_operations_t));
     handles->op = nullptr;
     handles->key = nullptr;
+    handles->op_mode = TEE_MODE_ENCRYPT;
     handles->digest = nullptr;
     handles->purpose = purpose;
     handles->algorithm = algorithm;
+    handles->padding = KM_PAD_NONE;
+    handles->block_mode = KM_MODE_ECB;
     handles->key_len = aml_key->key_len;
+    handles->min_mac_length = 0;
+    handles->mac_length = 0;
+    handles->aes_data_start = false;
+    handles->tag_len = 0;
+    handles->aes_data_to_hold = 0;
+
 
     error = KM1_load_key(&handles->key, aml_key->handle, sizeof(aml_key->handle),
             aml_key->optee_obj_type, aml_key->key_len);
@@ -1809,7 +1731,6 @@ keymaster_error_t aes_internal_update_v1(const TEE_OperationHandle op,
                                           const keymaster_padding_t padding,
                                           const uint8_t* in, const uint32_t in_len,
                                           const uint32_t data_to_hold,
-                                          bool direct_push,
                                           Buffer& ibuf,
                                           uint32_t* input_consumed,
                                           uint8_t** out, uint32_t* out_len)
@@ -2053,7 +1974,7 @@ keymaster_error_t aml_update(
         error = aes_internal_update_v1(handles->op, handles->purpose,
                                     handles->block_mode, handles->padding,
                                     input->data, input->data_length,
-                                    handles->aes_data_to_hold, false,
+                                    handles->aes_data_to_hold,
                                     handles->buffer,
                                     input_consumed, &tmp_buf, &tmp_len);
         CHK_ERR_AND_LEAVE(error, "aes_internal_update_v1 failed", out);
@@ -2642,7 +2563,7 @@ keymaster_error_t aml_abort(const struct keymaster1_device* dev __unused,
     }
 
     handles = reinterpret_cast<am_operations_t *>(operation_handle);
-    free_and_cleanup_op(handles);
+    return free_and_cleanup_op(handles);
 
 out:
 	return error;
