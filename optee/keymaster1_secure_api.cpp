@@ -741,8 +741,16 @@ keymaster_error_t KM1_hmac_keyblob_init(
     keymaster_error_t ret = KM_ERROR_OK;
     TEEC_Result res = TEEC_ERROR_GENERIC;
     uint32_t optee_algo = 0;
-	uint32_t optee_obj_type;
-	uint32_t dgst = 0;
+    uint32_t optee_obj_type;
+    uint32_t dgst = 0;
+
+    /* Sanity Check */
+    if (false == get_ca_inited()) {
+        if (KM_Secure_Initialize() < 0) {
+            LOG_D("%s:%d: KM_Secure_Initialize failed ...\n", __func__, __LINE__);
+            goto out;
+        }
+    }
 
     if (!operation) {
         LOG_D("%s:%d: invalid output.\n", __func__, __LINE__);
@@ -1236,9 +1244,8 @@ keymaster_error_t KM1_free_operation(const TEE_OperationHandle handle)
 {
     TEEC_Result res = TEEC_SUCCESS;
 
-    if (handle) {
+    if (handle)
         res = free_operation((TEE_OperationHandle)handle);
-	}
     else
         return KM_ERROR_INVALID_OPERATION_HANDLE;
 
@@ -1261,10 +1268,22 @@ keymaster_error_t KM1_load_key(TEE_ObjectHandle *keyobj, const uint8_t *id, uint
 		uint32_t obj_type, uint32_t key_len)
 {
     TEEC_Result res = TEEC_SUCCESS;
+
+    /* Sanity Check */
+    if (false == get_ca_inited()) {
+        if (KM_Secure_Initialize() < 0) {
+            LOG_D("%s:%d: KM_Secure_Initialize failed ...\n", __func__, __LINE__);
+            goto out;
+        }
+    }
+
     res = load_key_ca(keyobj, id, id_len, obj_type, key_len);
     if (res != TEEC_SUCCESS)
         return KM_ERROR_UNKNOWN_ERROR;
     return KM_ERROR_OK;
+
+out:
+    return KM_ERROR_SECURE_HW_ACCESS_DENIED;
 }
 
 keymaster_error_t KM1_release_key(TEE_ObjectHandle keyobj)

@@ -1455,14 +1455,15 @@ keymaster_error_t aml_begin(
         return KM_ERROR_INVALID_ARGUMENT;
     }
 
-    if (!out_params || !operation_handle) {
+    if (!operation_handle) {
         LOG_E("invlid output", 0);
         return KM_ERROR_OUTPUT_PARAMETER_NULL;
     }
 
     /* Init output*/
     *operation_handle = 0;
-    memset(out_params, 0, sizeof(keymaster_key_param_set_t));
+    if (out_params)
+        memset(out_params, 0, sizeof(keymaster_key_param_set_t));
 
     KeymasterKeyBlob blob(*key);
     AuthorizationSet additional_params(*in_params);
@@ -1473,7 +1474,6 @@ keymaster_error_t aml_begin(
             &hw_enforced, &sw_enforced, true);
     if (error != KM_ERROR_OK) {
         LOG_E("AmlParseKeyBlob failed", 0);
-        error = KM_ERROR_UNKNOWN_ERROR;
         goto out;
     }
 #if 0
@@ -1618,7 +1618,8 @@ keymaster_error_t aml_begin(
 
         if (iv_len && iv.get() && purpose == KM_PURPOSE_ENCRYPT) {
             authorization_set_out.push_back(TAG_NONCE, iv.get(), iv_len);
-            authorization_set_out.CopyToParamSet(out_params);
+            if (out_params)
+                authorization_set_out.CopyToParamSet(out_params);
         }
         *operation_handle = reinterpret_cast<keymaster_operation_handle_t>(handles);
     } else if (algorithm == KM_ALGORITHM_HMAC) {
@@ -1895,8 +1896,10 @@ keymaster_error_t aml_update(
     am_operations_t* handles = nullptr;
 
     /* Init output */
-    memset(out_params, 0x0, sizeof(keymaster_key_param_set_t));
-    memset(output, 0x0, sizeof(keymaster_blob_t));
+    if (out_params)
+        memset(out_params, 0x0, sizeof(keymaster_key_param_set_t));
+    if (output)
+        memset(output, 0x0, sizeof(keymaster_blob_t));
 
     if (!operation_handle || !input) {
         LOG_D("invlid input %p %lld", input, operation_handle);
@@ -2251,15 +2254,13 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
     UniquePtr<uint8_t[]> tmp;
 
     /* Init output */
-    memset(output, 0x0, sizeof(keymaster_blob_t));
-    memset(out_params, 0x0, sizeof(keymaster_key_param_set_t));
+    if (output)
+        memset(output, 0x0, sizeof(keymaster_blob_t));
+    if (out_params)
+        memset(out_params, 0x0, sizeof(keymaster_key_param_set_t));
 
     if (!operation_handle) {
         error = KM_ERROR_INVALID_ARGUMENT;
-        goto out;
-    }
-    if (!output) {
-        error = KM_ERROR_OUTPUT_PARAMETER_NULL;
         goto out;
     }
 
@@ -2286,8 +2287,10 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
                 error = asymmetric_sign_undigested(handles, sig, &sig_len);
                 CHK_ERR_AND_LEAVE(error, "asymmetric_sign_undigested failed", out);
             }
-            output->data = sig.release();
-            output->data_length = sig_len;
+            if (output) {
+                output->data = sig.release();
+                output->data_length = sig_len;
+            }
         } else if (purpose == KM_PURPOSE_VERIFY) {
             if (handles->digest) {
                 /* verify digested */
@@ -2335,8 +2338,10 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
                 sig_len = to_encrypt_len;
             }
 
-            output->data = sig.release();
-            output->data_length = sig_len;
+            if (output) {
+                output->data = sig.release();
+                output->data_length = sig_len;
+            }
         }
     } else if (algorithm == KM_ALGORITHM_EC) {
         if (purpose == KM_PURPOSE_SIGN) {
@@ -2356,8 +2361,10 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
                 error = asymmetric_sign_undigested(handles, sig, &sig_len);
                 CHK_ERR_AND_LEAVE(error, "asymmetric_sign_undigested failed", out);
             }
-            output->data = sig.release();
-            output->data_length = sig_len;
+            if (output) {
+                output->data = sig.release();
+                output->data_length = sig_len;
+            }
         } else if (purpose == KM_PURPOSE_VERIFY) {
             if (handles->digest) {
                 error = asymmetric_verify_digested(handles, signature->data, signature->data_length);
@@ -2409,8 +2416,10 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
 
                 assert(out_len == in_but_tag);
 
-                output->data = out_tmp.release();
-                output->data_length = out_len;
+                if (output) {
+                    output->data = out_tmp.release();
+                    output->data_length = out_len;
+                }
             } else if (handles->purpose == KM_PURPOSE_ENCRYPT) {
                 UniquePtr<uint8_t[]> tag;
                 UniquePtr<uint8_t[]> out_local;
@@ -2444,8 +2453,10 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
                 memcpy(out_tmp.get(), out_local.get(), out_local_len);
                 memcpy(out_tmp.get() + out_local_len, tag.get(), tag_len);
 
-                output->data = out_tmp.release();
-                output->data_length = out_len;
+                if (output) {
+                    output->data = out_tmp.release();
+                    output->data_length = out_len;
+                }
             }
         } else {
             UniquePtr<uint8_t[]> tmp;
@@ -2492,8 +2503,10 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
                 error = KM_ERROR_UNKNOWN_ERROR;
                 goto out;
             }
-            output->data = tmp.release();
-            output->data_length = out_len;
+            if (output) {
+                output->data = tmp.release();
+                output->data_length = out_len;
+            }
         }
     } else if (algorithm == KM_ALGORITHM_HMAC) {
         uint32_t digest_len = MAX_DIGEST_SIZE;
@@ -2518,8 +2531,10 @@ keymaster_error_t aml_finish(const struct keymaster1_device* dev __unused,
                     goto out;
                 }
                 memcpy(sig.get(), digest, handles->mac_length);
-                output->data = sig.release();
-                output->data_length = handles->mac_length;
+                if (output) {
+                    output->data = sig.release();
+                    output->data_length = handles->mac_length;
+                }
                 break;
             case KM_PURPOSE_VERIFY:
                 if (signature->data_length > digest_len ||
