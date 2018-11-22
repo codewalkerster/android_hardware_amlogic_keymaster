@@ -17,7 +17,7 @@ LOCAL_PATH := $(call my-dir)
 KEYMASTER_TA_BINARY := 8efb1e1c-37e5-4326-a5d68c33726c7d57
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := keystore.amlogic
+LOCAL_MODULE := keystore.$(TARGET_PRODUCT)
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_SRC_FILES := module.cpp \
 		   aml_keymaster_ipc.cpp \
